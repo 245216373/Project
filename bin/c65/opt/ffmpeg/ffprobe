@@ -1,0 +1,4 @@
+#!/bin/bash
+
+export LD_LIBRARY_PATH="$(dirname $(readlink -f $0))"
+exec $LD_LIBRARY_PATH/ffprobe_exec $@

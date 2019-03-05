@@ -1,0 +1,167 @@
+daemon off;
+error_log /dev/stderr info;
+
+# max_connections 0;
+user root;
+worker_processes 1;
+pid /run/nginx.pid;
+
+
+events {
+    use epoll;
+    worker_connections 65535;
+    multi_accept on;
+}
+
+rtmp {
+    access_log /dev/stdout;
+
+    server {
+        timeout 60s;
+        ping 3m;
+        ping_timeout 30s;
+        max_streams 2000;
+        ack_window 5000000;
+
+        listen 1935;
+        chunk_size 4096;
+        max_message 1M;
+        buflen 1s;
+
+        allow publish all;
+        allow play all;
+
+        application live {
+            live on;
+            meta copy;
+            interleave off;
+            wait_key on;
+            wait_video on;
+            publish_notify on;
+            drop_idle_publisher 600;
+            sync 10ms;
+            play_restart off;
+            idle_streams off;
+
+            record all;
+            record_path /var/opt/nginx/record;
+            # record_suffix -%d-%b-%y-%T.flv;
+            record_unique off;
+            record_append on;
+            record_lock on;
+            record_max_size 40960m;
+            # record_max_frames 1000000;
+            record_interval 24h;
+            record_notify on;
+
+            # exec_push ffmpeg -y -v quiet -i rtmp://127.0.0.1:1935/live/${ENV_DOLLAR}name -codec copy -f flv /var/opt/nginx/record/${ENV_DOLLAR}name.flv;
+            exec_push ffmpeg -y -v quiet -i rtmp://127.0.0.1:1935/live/${ENV_DOLLAR}name -codec copy -hls_time 2 -start_number 0 -hls_flags append_list -hls_playlist_type vod -hls_list_size 0 -f hls /var/opt/nginx/record/${ENV_DOLLAR}name/index.m3u8;
+            # exec_record_done bash -c "ffmpeg -y -v quiet -i ${ENV_DOLLAR}path -codec copy -f mp4 ${ENV_DOLLAR}dirname/../vod/${ENV_DOLLAR}basename.mp4 && ffmpeg -y -v quiet -i ${ENV_DOLLAR}path -codec copy -start_number 0 -hls_time 10 -hls_list_size 0 -f hls ${ENV_DOLLAR}dirname/../vod/${ENV_DOLLAR}basename.m3u8 && mv ${ENV_DOLLAR}path ${ENV_DOLLAR}dirname/../vod/";
+            # 
+            # on_connect http://localhost:8080/nginx_callback;
+            on_publish http://localhost:8080/nginx_callback;
+            # on_play http://localhost:8080/nginx_callback;
+            # on_done http://localhost:8080/nginx_callback;
+            # on_play_done http://localhost:8080/nginx_callback;
+            on_publish_done http://localhost:8080/nginx_callback;
+            # on_record_done http://localhost:8080/nginx_callback;
+            # on_update http://localhost:8080/nginx_callback;
+            notify_update_timeout 30s;
+            notify_update_strict on;
+            notify_relay_redirect off;
+            notify_method post;
+
+            hls on;
+            hls_path /tmp/live;
+            hls_fragment 5s;
+            hls_playlist_length 30s;
+            hls_sync 100ms;
+            hls_continuous off;
+            hls_nested off;
+            # hls_base_url http://localhost:80/hls/;
+            hls_cleanup on;
+            hls_fragment_naming system;
+            hls_fragment_naming_granularity 0;
+            hls_fragment_slicing aligned;
+            # hls_variant  可以通过这里切换做到 hls 的流清晰度自动切换
+            hls_type live;
+            # hls_keys on;
+            # hls_key_path /tmp/keys;
+            # hls_key_url https://myserver.com/keys/;
+            # hls_fragments_per_key 0;
+        }
+
+        application src-1080to720 {
+            live on;
+
+            exec_push ffmpeg -i rtmp://localhost/src-1080to720/${ENV_DOLLAR}name
+              -preset veryfast -vcodec libx264 -s 1280x720 -f flv rtmp://localhost:1935/live/${ENV_DOLLAR}name;
+        }
+
+        application src-1080to480 {
+            live on;
+
+            exec_push ffmpeg -i rtmp://localhost/src-1080to480/${ENV_DOLLAR}name
+              -preset veryfast -vcodec libx264 -s 848x480 -f flv rtmp://localhost:1935/live/${ENV_DOLLAR}name;
+        }
+
+        application src-720to480 {
+            live on;
+
+            exec_push ffmpeg -i rtmp://localhost/src-720to480/${ENV_DOLLAR}name
+              -preset veryfast -vcodec libx264 -s 848x480 -f flv rtmp://localhost:1935/live/${ENV_DOLLAR}name;
+        }
+    }
+}
+
+http {
+    access_log /dev/stdout;
+
+    server {
+
+        listen 80;
+
+        location /stat {
+            rtmp_stat all;
+            rtmp_stat_stylesheet stat.xsl;
+        }
+
+        location /stat.xsl {
+            root /opt/nginx;
+        }
+
+        location /live {
+            types {
+                application/vnd.apple.mpegurl m3u8;
+                video/mp2t ts;
+            }
+            root /tmp;
+            add_header Cache-Control no-cache;
+            add_header Access-Control-Allow-Origin *;
+        }
+
+        location ~* ^/vod/.*\.m3u8$ {
+            types {
+                application/vnd.apple.mpegurl m3u8;
+                video/mp2t ts;
+            }
+            root /var/opt/nginx;
+            add_header Cache-Control no-cache;
+            add_header Access-Control-Allow-Origin *;
+        }
+
+        location /vod/ {
+            root /var/opt/nginx;
+            add_header Cache-Control no-cache;
+            add_header Access-Control-Allow-Origin *;
+        }
+
+        location /control {
+            rtmp_control all;
+        }
+    }
+}
+
+# rtmp_auto_push on;
+# rtmp_auto_push_reconnect 1s;
+# rtmp_socket_dir /var/sock;
