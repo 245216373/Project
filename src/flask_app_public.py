@@ -279,8 +279,6 @@ class MeetingProcessorImplement(MeetingProcessorInterface):
         task_id = self.body.get('task_id')
         if not task_id:
             task_id = str(uuid.uuid4()).replace('-', '')
-        # cut_args_str = self.body.get('cut_args', '{}')
-        # cut_args = json.loads(cut_args_str)  # type: Dict[str, Any]
         cut_args = self.body.get('cut_args', '{}')
         file_name = cut_args.get('file_name')
         LOGGER.debug('file_name is %s, cut_args is %s' % (file_name, cut_args))
@@ -337,8 +335,6 @@ class MeetingProcessorImplement(MeetingProcessorInterface):
                 'error_code': -1,
                 'error_info': 'UNKOWN_ERROR',
                 'task_id': task_id,
-                # "file_id": file_id,
-                # "file_type": file_type,
                 "addition": addition,
             }
             data = {
@@ -352,11 +348,6 @@ class MeetingProcessorImplement(MeetingProcessorInterface):
             data.update(body)
             requests.post(self.BUSINESS_APP_SERVER_URL, json=data, timeout=60)
 
-        # file_id = self.body.get('file_id', '')
-        # if not file_id:
-        #     abort(404)
-        # file_type = self.body.get('file_type', '')
-        # filename = file_id + '.' + file_type
         vod_path = env.get('APP_VOD_ROOT_PATH')
 
         # 接收附加参数addition
@@ -365,17 +356,11 @@ class MeetingProcessorImplement(MeetingProcessorInterface):
         task_id = self.body.get('task_id')
         if not task_id:
             task_id = str(uuid.uuid4()).replace('-', '')
-        # merge_args_str = self.body.get('merge_args', '{}')
-        # merge_args = json.loads(merge_args_str)  # type: Dict[str, Any]
 
         merge_args = self.body.get('merge_args', {})
         merge_files = self.body.get('merge_files', {})
         if 'file_id' not in merge_args:
             merge_args['file_id'] = str(uuid.uuid4()).replace('-', '')
-        #merger.submit_task(task_id, file_id, file_type, filename, vod_path,
-        #                   merge_args, callback_ok, callback_error)
-
-        LOGGER.debug('merge_args is %s, merge_files is %s' % (merge_args, merge_files))
 
         merger.submit_task(task_id, vod_path, merge_args, merge_files, callback_ok, callback_error)
         result_body = {
@@ -410,7 +395,6 @@ def app_upload_accept_check_view():
     chunk = request.form.get('chunk', 0)
     file_slice_name = "%s%s" % (fileMd5, chunk)
     file_slice_path = upload_path + '/' + file_slice_name
-    LOGGER.debug('fileMd5 is %s, file_slice_path is %s' % (fileMd5, file_slice_path))
 
     if os.path.exists(file_slice_path):
         result_body = {"_id": request_id, "error_code": 1, "error_info": "exists"}
@@ -429,11 +413,8 @@ def app_upload_accept_view():
     # type: () -> ignore
     request_id = str(uuid.uuid4()).replace('-', '')
     upload_file = request.files['file']
-    # task_id = request.form.get('task_id')
-    fileMd5 = request.form.get('fileMd5')
-    LOGGER.debug('fileMd5 is %s ' % (fileMd5, ))
+    fileMd5 = request.form.get('fileMd5')    # 由前端提供,文件名加文件大小取的md5值
     chunk = request.form.get('chunk', 0)
-    # filename = '%s%s' % (task_id, chunk)
     filename = '%s%s' % (fileMd5, chunk)
     upload_file.save('%s/%s' % (env.get('APP_UPLOAD_ROOT_PATH'), filename))
     result_body = {"_id": request_id, "error_code": 0, "error_info": ""}
@@ -453,13 +434,16 @@ def app_upload_complete_view():
 
     def callback_ok():
         # type: () -> None
-        LOGGER.debug('%s task_id %s callback_ok' % (request_id, task_id))
+        LOGGER.debug('%s task_id %s callback_ok' % (request_id, upload_task_id))
         body = {
             "error_code": 0,
             'error_info': '',
-            'task_id': task_id,
+            'task_id': upload_task_id,
             "file_id": file_id,
             "file_type": file_type,
+            "file_name": origin_filename,
+            "compid": compid,
+            "userid": userid,
         }
         data = {
             '_id': request_id,
@@ -475,13 +459,14 @@ def app_upload_complete_view():
 
     def callback_error():
         # type: () -> None
-        LOGGER.debug('%s task_id %s callback_error' % (request_id, task_id))
+        LOGGER.debug('%s task_id %s callback_error' % (request_id, upload_task_id))
         body = {
             'error_code': -1,
             'error_info': 'UNKOWN_ERROR',
-            'task_id': task_id,
+            'task_id': upload_task_id,
             "file_id": file_id,
             "file_type": file_type,
+            'compid': str(compid),
         }
         data = {
             '_id': request_id,
@@ -494,30 +479,30 @@ def app_upload_complete_view():
         data.update(body)
         requests.post(BUSINESS_APP_SERVER_URL, json=data, timeout=60)
 
-    origin_filename = request.args.get('file_id').strip()
+    # origin_filename = request.args.get('file_id').strip()
+    origin_filename = request.args.get('filename')
     file_id = str(uuid.uuid4()).replace('-', '')
     if not origin_filename:
         origin_filename = file_id
     file_type = request.args.get('file_type')
     compid = request.args.get('compid')
+    userid = request.args.get('userid')
 
     target_filename = file_id + '.' + file_type
-    task_id = request.args.get('task_id')
+    upload_task_id = request.args.get('task_id')
     upload_path = env.get('APP_UPLOAD_ROOT_PATH')
     target_file_path = '%s/%s' % (upload_path, target_filename)
 
     auto_transcode = request.args.get('auto_transcode')
     meeting_id = request.args.get('meeting_id')
 
-    upload_file_completer.submit_task(task_id, target_filename,
+    upload_file_completer.submit_task(upload_task_id, target_filename,
                                       target_file_path, upload_path,
                                       callback_ok, callback_error)
 
     upload_file_path = upload_path + '/' + target_filename
 
     def AutoTranscode():
-
-        LOGGER.debug('Enter autotranscode !!!')
 
         def callback_ok():
             # type: () -> None
@@ -531,10 +516,12 @@ def app_upload_complete_view():
                 'task_id': task_id,
                 "file_id": file_id,
                 "file_type": 'm3u8',
-                "compid" : compid,
-                "filename" : origin_filename,
-                "base_url" : upload_file_path,
+                "file_name": origin_filename,
+                "base_url": upload_file_path,
                 "source_type": source_type,
+                "compid": compid,
+                "userid": userid,
+                'addition': {'upload_task_id': upload_task_id}
             }
             data = {
                 '_id': request_id,
@@ -548,7 +535,7 @@ def app_upload_complete_view():
             vod_manager = VodManagerFactory.make(
                 meeting_id, file_id=transcode_args['file_id'])
             data.update(vod_manager.vod_info)
-            LOGGER.debug('Transcode data is %s' % (data, ))
+            LOGGER.debug('AutoTranscode callback_ok data:%s' % (data, ))
             requests.post(BUSINESS_APP_SERVER_URL, json=data, timeout=60)
 
         def callback_error():
@@ -561,6 +548,10 @@ def app_upload_complete_view():
                 "file_id": file_id,
                 "file_type": file_type,
                 "source_type": source_type,
+                "file_name": origin_filename,
+                "compid": compid,
+                "userid": userid,
+                'addition': {'upload_task_id': upload_task_id}
             }
             data = {
                 '_id': request_id,
@@ -571,6 +562,7 @@ def app_upload_complete_view():
                 'event_type': 'notify_transcode_file_done',
             }
             data.update(body)
+            LOGGER.debug('callback_error data:%s' % (data, ))
             requests.post(BUSINESS_APP_SERVER_URL, json=data, timeout=60)
 
         transcode_args = {

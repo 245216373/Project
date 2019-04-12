@@ -50,7 +50,7 @@ class AppMonitorAsyncImplement(
         # type: () -> None
         if self._schedule_check is None:
             self._schedule_check = self._actor_schedule_forever(
-                "check", delay=120, min_delay=None)
+                "check", delay=1800, min_delay=None)
 
 
 class AppMonitorAsyncFactory(object):

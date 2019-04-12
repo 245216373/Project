@@ -104,7 +104,7 @@ class MergerAsyncImplement(
             LOGGER.debug('tmp_src_file_path is %s' % (tmp_src_file_path, ))
             with open(tmp_src_file_path, 'wb') as f:
                 f_list = []
-                # f_list.append(to_src_file_path(file_id))
+                # f_list.append(to_src_file_path(file_id))    # 协议有做更改,故此段代码无效
                 # for merage_file_args in merge_args['merge_files']:  原代码
                 for merage_file_args in merge_files:
                     if not merage_file_args['file_id'] or not merage_file_args['file_type']:

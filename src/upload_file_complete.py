@@ -60,7 +60,6 @@ class UploadFileCompleterAsyncImplement(
                 while True:
                     try:
                         filename = '%s/%s%d' % (upload_path, task_id, chunk)
-                        LOGGER.debug('Merge file %s' % (filename))
                         source_file = open(filename, 'rb')
                         target_file.write(source_file.read())
                         source_file.close()

@@ -531,7 +531,7 @@ class RecordMediaInfoImplement(RecordMediaInfoInterface):
 
     def refresh_media_snapshot(self, time_pos):
         # type: (int) -> None
-        LOGGER.debug('Enter refresh_media_snapshot')
+
         if 'snapshot_name' not in self.info:
             LOGGER.debug('do not update media snapshot path, media info error')
             return
@@ -557,7 +557,6 @@ class RecordMediaInfoImplement(RecordMediaInfoInterface):
         if not media_info:
             LOGGER.debug('do not update media info, because media info error')
             return
-        LOGGER.debug('Enter refresh_media_info')
         new_info = copy.copy(self.info)
         try:
             new_info['file_path'] = '%s/index.m3u8' % self.path
