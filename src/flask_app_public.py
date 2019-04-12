@@ -493,7 +493,7 @@ def app_upload_complete_view():
     upload_path = env.get('APP_UPLOAD_ROOT_PATH')
     target_file_path = '%s/%s' % (upload_path, target_filename)
 
-    auto_transcode = request.args.get('auto_transcode')
+    istranscode = request.args.get('auto_transcode')
     meeting_id = request.args.get('meeting_id')
 
     upload_file_completer.submit_task(upload_task_id, target_filename,
@@ -501,104 +501,13 @@ def app_upload_complete_view():
                                       callback_ok, callback_error)
 
     upload_file_path = upload_path + '/' + target_filename
+    task_id = request.args.get('task_id')
 
-    def AutoTranscode():
-
-        def callback_ok():
-            # type: () -> None
-
-            upload_filename = file_id + '.' + file_type
-            upload_file_path = '/' + 'upload' + "/" + upload_filename
-
-            body = {
-                "error_code": 0,
-                'error_info': '',
-                'task_id': task_id,
-                "file_id": file_id,
-                "file_type": 'm3u8',
-                "file_name": origin_filename,
-                "base_url": upload_file_path,
-                "source_type": source_type,
-                "compid": compid,
-                "userid": userid,
-                'addition': {'upload_task_id': upload_task_id}
-            }
-            data = {
-                '_id': request_id,
-                't': int(float(time.time())),
-                'sign_type': 'md5',
-                'sign': '00000000000000000000000000000000',
-                'nonce': '123456',
-                'event_type': 'notify_transcode_file_done',
-            }
-            data.update(body)
-            vod_manager = VodManagerFactory.make(
-                meeting_id, file_id=transcode_args['file_id'])
-            data.update(vod_manager.vod_info)
-            LOGGER.debug('AutoTranscode callback_ok data:%s' % (data, ))
-            requests.post(BUSINESS_APP_SERVER_URL, json=data, timeout=60)
-
-        def callback_error():
-            # type: () -> None
-
-            body = {
-                'error_code': -1,
-                'error_info': 'UNKOWN_ERROR',
-                'task_id': task_id,
-                "file_id": file_id,
-                "file_type": file_type,
-                "source_type": source_type,
-                "file_name": origin_filename,
-                "compid": compid,
-                "userid": userid,
-                'addition': {'upload_task_id': upload_task_id}
-            }
-            data = {
-                '_id': request_id,
-                't': int(float(time.time())),
-                'sign_type': 'md5',
-                'sign': '00000000000000000000000000000000',
-                'nonce': '123456',
-                'event_type': 'notify_transcode_file_done',
-            }
-            data.update(body)
-            LOGGER.debug('callback_error data:%s' % (data, ))
-            requests.post(BUSINESS_APP_SERVER_URL, json=data, timeout=60)
-
-        transcode_args = {
-            "template_type": 1,
-            "s": "1280x720",
-            "r": 24,
-            "crf": 34,
-            "file_id": file_id,
-            "file_type": "m3u8",
-        }
-
-        filename = file_id + '.' + file_type
-        upload_path = env.get('APP_UPLOAD_ROOT_PATH')
-        vod_path = env.get('APP_VOD_ROOT_PATH')
-
-        task_id = request.args.get('task_id')
-        if not task_id:
-            task_id = str(uuid.uuid4()).replace('-', '')
-        if 'file_id' not in transcode_args:
-            transcode_args['file_id'] = str(uuid.uuid4()).replace('-', '')
-        transcoder.submit_task(task_id, file_id, file_type, filename,
-                               upload_path, vod_path, transcode_args,
-                               callback_ok, callback_error)
-
-    if auto_transcode > 0:
-        source_type = 1
-        LOGGER.debug('Transcoding, origin_filename is %s, file_id is %s, \
-        file_type is %s, upload_file_path is %s' % (
-            origin_filename, file_id, file_type, upload_file_path))
-        while True:
-            if os.path.exists(upload_file_path):
-                AutoTranscode()
-                break
-            time.sleep(0.5)
-    else:
-        source_type = ''
+    if istranscode > 0:
+        logging.debug('''auto_transcode(file_id, task_id, file_type, origin_filename,upload_file_path,
+                       compid, userid, upload_task_id, request_id, meeting_id)''')
+        auto_transcode(file_id, task_id, file_type, origin_filename,upload_file_path,
+                       compid, userid, upload_task_id, request_id, meeting_id)
 
     result_body = {'_id': request_id, "error_code": 0, "error_info": ""}
     result_body.update({'file_id': file_id, 'file_type': file_type})
@@ -652,3 +561,100 @@ def app_vod_view(filename):
                              vod_path + '/' + filename).get(timeout=600)
 
     return redirect(re_url)
+
+
+# 上传后,自动转码函数
+def auto_transcode(file_id, task_id, file_type, origin_filename,upload_file_path,
+                   compid, userid, upload_task_id, request_id, meeting_id):
+
+    def callback_ok():
+        # type: () -> None
+
+        upload_filename = file_id + '.' + file_type
+        relative_upload_file_path = '/' + 'upload' + "/" + upload_filename    # 相对路径,返回给后台的数据
+
+        body = {
+            "error_code": 0,
+            'error_info': '',
+            'task_id': task_id,
+            "file_id": file_id,
+            "file_type": 'm3u8',
+            "file_name": origin_filename,
+            "base_url": relative_upload_file_path,
+            # "source_type": source_type,
+            "compid": compid,
+            "userid": userid,
+            'addition': {'upload_task_id': upload_task_id}
+        }
+        data = {
+            '_id': request_id,
+            't': int(float(time.time())),
+            'sign_type': 'md5',
+            'sign': '00000000000000000000000000000000',
+            'nonce': '123456',
+            'event_type': 'notify_transcode_file_done',
+        }
+        data.update(body)
+        vod_manager = VodManagerFactory.make(
+            meeting_id, file_id=transcode_args['file_id'])
+        data.update(vod_manager.vod_info)
+        LOGGER.debug('AutoTranscode callback_ok data:%s' % (data, ))
+        requests.post(BUSINESS_APP_SERVER_URL, json=data, timeout=60)
+
+    def callback_error():
+        # type: () -> None
+
+        body = {
+            'error_code': -1,
+            'error_info': 'UNKOWN_ERROR',
+            'task_id': task_id,
+            "file_id": file_id,
+            "file_type": file_type,
+            # "source_type": source_type,
+            "file_name": origin_filename,
+            "compid": compid,
+            "userid": userid,
+            'addition': {'upload_task_id': upload_task_id}
+        }
+        data = {
+            '_id': request_id,
+            't': int(float(time.time())),
+            'sign_type': 'md5',
+            'sign': '00000000000000000000000000000000',
+            'nonce': '123456',
+            'event_type': 'notify_transcode_file_done',
+        }
+        data.update(body)
+        LOGGER.debug('callback_error data:%s' % (data, ))
+        requests.post(BUSINESS_APP_SERVER_URL, json=data, timeout=60)
+
+
+    transcode_args = {
+        "template_type": 1,
+        "s": "1280x720",
+        "r": 24,
+        "crf": 34,
+        "file_id": file_id,
+        "file_type": "m3u8",
+    }
+
+    filename = file_id + '.' + file_type
+    BUSINESS_APP_SERVER_URL = env.get('BUSINESS_APP_SERVER_URL')  # type: str
+    upload_path = env.get('APP_UPLOAD_ROOT_PATH')
+    vod_path = env.get('APP_VOD_ROOT_PATH')
+
+    LOGGER.debug('Transcoding, origin_filename is %s, file_id is %s, \
+    file_type is %s, upload_file_path is %s' % (
+        origin_filename, file_id, file_type, upload_file_path))
+    while True:
+        if os.path.exists(upload_file_path):    # 判断是否存在,若存在说明合并完成,可进行转码
+            break
+        time.sleep(0.2)
+
+    if not task_id:
+        task_id = str(uuid.uuid4()).replace('-', '')
+    if 'file_id' not in transcode_args:
+        transcode_args['file_id'] = str(uuid.uuid4()).replace('-', '')
+    transcoder.submit_task(task_id, file_id, file_type, filename,
+                           upload_path, vod_path, transcode_args,
+                       callback_ok, callback_error)
